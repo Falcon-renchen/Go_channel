@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"sync"
+)
 
 type Cmd func(list []int) chan int
 type PipeCmd func(in chan int) chan int
@@ -26,8 +29,32 @@ func Pipe(args []int, c1 Cmd, cs ...PipeCmd) chan int {
 		}
 	}
 	return retlist[len(retlist)-1]
-
 }
+
+//多路复用,两个两个输出
+func Pipe2(args []int, c1 Cmd, cs ...PipeCmd) chan int {
+	ret := c1(args) //找偶数
+	out := make(chan int)
+	wg := sync.WaitGroup{}
+
+	for _, c := range cs {
+		getChan := c(ret)
+		wg.Add(1)
+		go func(input chan int) {
+			defer wg.Done()
+			for v := range input {
+				out <- v
+			}
+		}(getChan)
+	}
+	go func() {
+		defer close(out)
+		wg.Wait()
+	}()
+
+	return out
+}
+
 func Evens(list []int) chan int {
 	c := make(chan int)
 	go func() {
@@ -68,7 +95,7 @@ func M10(in chan int) chan int {
 func main() {
 	nums := []int{2, 3, 5, 12, 22, 16, 4, 9, 23, 64, 62}
 
-	ret := Pipe(nums, Evens, M10, M2, M10, M2)
+	ret := Pipe2(nums, Evens, M10, M2, M10, M2)
 	for r := range ret {
 		fmt.Printf("%d ", r)
 	}
